@@ -33,7 +33,7 @@ from sqlalchemy.orm.collections import attribute_mapped_collection
 from sqlalchemy.schema import Column, ForeignKey, ForeignKeyConstraint, \
     UniqueConstraint
 from sqlalchemy.types import Integer, Float, String, Unicode, DateTime, Enum, \
-    BigInteger
+    BigInteger, UnicodeText
 
 from cmscommon.datetime import make_datetime
 from . import Filename, FilenameSchema, Digest, Base, Participation, Task, \
@@ -311,10 +311,10 @@ class SubmissionResult(Base):
 
     # The compiler stdout and stderr.
     compilation_stdout = Column(
-        Unicode,
+        UnicodeText,
         nullable=True)
     compilation_stderr = Column(
-        Unicode,
+        UnicodeText,
         nullable=True)
 
     # Other information about the compilation.
@@ -752,11 +752,11 @@ class Evaluation(Base):
 
     # stdout, stderr
     evaluation_stdout = Column(
-        Unicode,
+        UnicodeText,
         nullable=True
     )
     evaluation_stderr = Column(
-        Unicode,
+        UnicodeText,
         nullable=True
     )
 
