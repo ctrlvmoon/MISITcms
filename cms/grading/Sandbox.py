@@ -929,10 +929,17 @@ class IsolateSandbox(SandboxBase):
         # symlink to one out of many alternatives.
         self.maybe_add_mapped_directory("/etc/alternatives")
 
-        # Likewise, needed by C# programs. The Mono runtime looks in
-        # /etc/mono/config to obtain the default DllMap, which includes, in
-        # particular, the System.Native assembly.
-        self.maybe_add_mapped_directory("/etc/mono", options="noexec")
+        # MISITcms: Mount the /etc/ directory for Python Connections
+        self.maybe_add_mapped_directory("/etc/")
+        # MISITcms: Add the Python encoding environment variable for UTF-8
+        self.set_env["PYTHONIOENCODING"] = "utf8"
+        self.inherit_env.append("LC_ALL")
+        # MISITcms: Mount the cms-course/data directory for accessing data files
+        self.maybe_add_mapped_directory("/root/cms-data/data/", dest="/data/")
+        # MISITcms: Check if allow_writing_in_home is true in the cms.conf file
+        self.allow_writing_in_home = config.allow_writing_in_home
+        # MISITcms: Check if enabling networking is true in the cms.conf file
+        self.enable_networking = config.enable_networking
 
         # Tell isolate to get the sandbox ready. We do our best to cleanup
         # after ourselves, but we might have missed something if a previous
