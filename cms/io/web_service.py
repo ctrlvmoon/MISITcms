@@ -21,12 +21,21 @@
 
 import logging
 
-import tornado.escape
-import tornado.web
-import tornado.wsgi
+import collections
+try:
+    collections.MutableMapping
+except:
+    # Monkey-patch: Tornado 4.5.3 does not work on Python 3.11 by default
+    collections.MutableMapping = collections.abc.MutableMapping
+
+try:
+    import tornado4.wsgi as tornado_wsgi
+except ImportError:
+    import tornado.wsgi as tornado_wsgi
 from gevent.pywsgi import WSGIServer
 from werkzeug.contrib.fixers import ProxyFix
-from werkzeug.wsgi import DispatcherMiddleware, SharedDataMiddleware
+from werkzeug.middleware.dispatcher import DispatcherMiddleware
+from werkzeug.middleware.shared_data import SharedDataMiddleware
 
 from cms.db.filecacher import FileCacher
 from cms.server.file_middleware import FileServerMiddleware
@@ -56,7 +65,7 @@ class WebService(Service):
         is_proxy_used = parameters.pop('is_proxy_used', None)
         num_proxies_used = parameters.pop('num_proxies_used', None)
 
-        self.wsgi_app = tornado.wsgi.WSGIApplication(handlers, **parameters)
+        self.wsgi_app = tornado_wsgi.WSGIApplication(handlers, **parameters)
         self.wsgi_app.service = self
 
         for entry in static_files:

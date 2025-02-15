@@ -26,6 +26,7 @@ import resource
 import select
 import stat
 import tempfile
+import time
 from abc import ABCMeta, abstractmethod
 from functools import wraps, partial
 
@@ -34,7 +35,6 @@ from gevent import subprocess
 
 from cms import config, rmtree
 from cmscommon.commands import pretty_print_cmdline
-from cmscommon.datetime import monotonic_time
 
 
 logger = logging.getLogger(__name__)
@@ -594,7 +594,7 @@ class StupidSandbox(SandboxBase):
         if self.exec_time:
             return self.exec_time
         if self.popen_time:
-            self.exec_time = monotonic_time() - self.popen_time
+            self.exec_time = time.monotonic() - self.popen_time
             return self.exec_time
         return None
 
@@ -765,7 +765,7 @@ class StupidSandbox(SandboxBase):
             stderr_fd = subprocess.PIPE
 
         # Note down execution time
-        self.popen_time = monotonic_time()
+        self.popen_time = time.monotonic()
 
         # Actually call the Popen
         self.popen = self._popen(command,
@@ -929,17 +929,10 @@ class IsolateSandbox(SandboxBase):
         # symlink to one out of many alternatives.
         self.maybe_add_mapped_directory("/etc/alternatives")
 
-        # MISITcms: Mount the /etc/ directory for Python Connections
-        self.maybe_add_mapped_directory("/etc/")
-        # MISITcms: Add the Python encoding environment variable for UTF-8
-        self.set_env["PYTHONIOENCODING"] = "utf8"
-        self.inherit_env.append("LC_ALL")
-        # MISITcms: Mount the cms-course/data directory for accessing data files
-        self.maybe_add_mapped_directory("/root/cms-data/data/", dest="/data/")
-        # MISITcms: Check if allow_writing_in_home is true in the cms.conf file
-        self.allow_writing_in_home = config.allow_writing_in_home
-        # MISITcms: Check if enabling networking is true in the cms.conf file
-        self.enable_networking = config.enable_networking
+        # Likewise, needed by C# programs. The Mono runtime looks in
+        # /etc/mono/config to obtain the default DllMap, which includes, in
+        # particular, the System.Native assembly.
+        self.maybe_add_mapped_directory("/etc/mono", options="noexec")
 
         # Tell isolate to get the sandbox ready. We do our best to cleanup
         # after ourselves, but we might have missed something if a previous
@@ -1009,8 +1002,8 @@ class IsolateSandbox(SandboxBase):
                 os.path.realpath(os.path.join(self._home_dest, inner_path))
             # If an inner path is absolute (e.g., /fifo0/u0_to_m) then
             # it may be outside home and we should ignore it.
-            # FIXME: In Py3 use os.path.commonpath.
-            if not abs_inner_path.startswith(self._home_dest + "/"):
+            if os.path.commonpath([abs_inner_path,
+                                   self._home_dest]) != self._home_dest:
                 continue
             rel_inner_path = os.path.relpath(abs_inner_path, self._home_dest)
             outer_path = os.path.join(self._home, rel_inner_path)
@@ -1085,7 +1078,7 @@ class IsolateSandbox(SandboxBase):
         if self.box_id is not None:
             res += ["--box-id=%d" % self.box_id]
         if self.cgroup:
-            res += ["--cg", "--cg-timing"]
+            res += ["--cg"]
         if self.chdir is not None:
             res += ["--chdir=%s" % self.chdir]
         for src, dest, options in self.dirs:
@@ -1424,11 +1417,11 @@ class IsolateSandbox(SandboxBase):
             [self.box_exec]
             + (["--cg"] if self.cgroup else [])
             + ["--box-id=%d" % self.box_id, "--init"])
-        ret = subprocess.call(init_cmd)
-        if ret != 0:
+        try:
+            subprocess.check_call(init_cmd)
+        except subprocess.CalledProcessError as e:
             raise SandboxInterfaceException(
-                "Failed to initialize sandbox with command: %s "
-                "(error %d)" % (pretty_print_cmdline(init_cmd), ret))
+                "Failed to initialize sandbox") from e
 
     def cleanup(self, delete=False):
         """See Sandbox.cleanup()."""
@@ -1444,6 +1437,7 @@ class IsolateSandbox(SandboxBase):
             + ["--box-id=%d" % self.box_id]
 
         if delete:
+            # Ignore exit status as some files may be owned by our user
             subprocess.call(
                 exe + [
                     "--dir=%s=%s:rw" % (self._home_dest, self._home),
@@ -1452,8 +1446,9 @@ class IsolateSandbox(SandboxBase):
                 stdout=subprocess.DEVNULL, stderr=subprocess.STDOUT)
 
         # Tell isolate to cleanup the sandbox.
-        subprocess.call(exe + ["--cleanup"],
-                        stdout=subprocess.DEVNULL, stderr=subprocess.STDOUT)
+        subprocess.check_call(
+            exe + ["--cleanup"],
+            stdout=subprocess.DEVNULL, stderr=subprocess.STDOUT)
 
         if delete:
             logger.debug("Deleting sandbox in %s.", self._outer_dir)

@@ -5,6 +5,7 @@
 # Copyright © 2014-2017 Stefano Maggiolo <s.maggiolo@gmail.com>
 # Copyright © 2018 Edoardo Morassutto <edoardo.morassutto@gmail.com>
 # Copyright © 2018 Luca Wehrstedt <luca.wehrstedt@gmail.com>
+# Copyright © 2021 Grace Hawkins <amoomajid99@gmail.com>
 #
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU Affero General Public License as
@@ -19,7 +20,6 @@
 # You should have received a copy of the GNU Affero General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-import imp
 import logging
 import os
 import subprocess
@@ -30,7 +30,7 @@ from cms import config
 from cms.db import Contest, User, Task, Statement, Dataset, Manager, Testcase
 from cmscommon.crypto import build_password
 from cmscontrib import touch
-from .base_loader import ContestLoader, TaskLoader, UserLoader
+from .base_loader import ContestLoader, TaskLoader, UserLoader, LANGUAGE_MAP
 
 
 logger = logging.getLogger(__name__)
@@ -38,10 +38,6 @@ logger = logging.getLogger(__name__)
 
 def make_timedelta(t):
     return timedelta(seconds=t)
-
-
-# TODO: add all languages.
-LANGUAGE_MAP = {'english': 'en', 'russian': 'ru', 'italian': 'it'}
 
 
 class PolygonTaskLoader(TaskLoader):
@@ -148,10 +144,11 @@ class PolygonTaskLoader(TaskLoader):
         task_cms_conf = None
         if os.path.exists(task_cms_conf_path):
             logger.info("Found additional CMS options for task %s.", name)
-            with open(task_cms_conf_path, 'rb') as f:
-                task_cms_conf = imp.load_module('cms_conf', f,
-                                                task_cms_conf_path,
-                                                ('.py', 'r', imp.PY_SOURCE))
+            import importlib.util
+            spec = importlib.util.spec_from_file_location(
+                'cms_conf', task_cms_conf_path)
+            task_cms_conf = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(task_cms_conf)
         if task_cms_conf is not None and hasattr(task_cms_conf, "general"):
             args.update(task_cms_conf.general)
 
